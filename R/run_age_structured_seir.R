@@ -109,7 +109,14 @@ stan_data <- list(T = T,
                       y0=y0,
                       hospitalised = hospitalised,
                       deaths=deaths)
-initF <- function() list(a=10, b=0.2, sigma=rep(1.25,1), nu=0.9, phi=0.35, beta=0.01)
+initF <- function() list(alpha=1,
+              tau=0.5,
+              beta_scaling=0.1,
+              gamma=1/3,
+              H=0.75,
+              phi=0.6,
+              det_rate=c(rep(0.2,14),rep(0.5,7)),
+              delta=1)
 
 fit <- stan(file = 'src/stan_files/age_structured_seir.stan',
                 data = stan_data,
@@ -118,3 +125,4 @@ fit <- stan(file = 'src/stan_files/age_structured_seir.stan',
                 iter = 500,
                 init=initF
 )
+saveRDS(fit,file=here::here('fits/age_structured_fit_synthetic_data.rds'))
