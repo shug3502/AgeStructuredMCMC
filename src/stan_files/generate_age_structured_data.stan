@@ -181,19 +181,17 @@ for (a in 1:nAges){
 data {
   int<lower=1> T; //number of time points (days) data available for
   int<lower=1> Tlockdown; //time point (day) at which social distancing measures introduced
-  int<lower=1> Tfinal;
   real ts1[Tlockdown]; //times for integration up to lockdown
   real ts2[T-Tlockdown]; //times for solving ode after lockdown
-  real ts3[Tfinal-Tlockdown];
   int<lower=1> nAges; //21
   int nCompartments; //16; //1 Susceptibles, 4 exposed, 5 detected, 3 undetected; plus hospitalised and removed and recovered
   matrix[nAges,nAges] beta[4]; //transmission rates: these depend on contacts between ages, and vary between household, school, work and other. Get these from PREM et al 2017 Plos Comp Biol
   real N[nAges]; //total population size of each age compartment
   real prop_hospitalised[nAges];
   real prop_die[nAges];
-  int hospitalised[T,nAges];
-  int deaths[T,nAges];
   real y0[nCompartments*nAges]; //initial condition age stratified
+  real theta[7+nAges];
+  real obs_noise;
 }
 
 transformed data {
@@ -217,6 +215,7 @@ for (a in 1:nAges){
 }
 
 parameters {
+  /*
   real<lower=0> alpha; //rate of disease progression from exposed to infected
   real<lower=0> tau; //relative transmission from asymptomatics vs symptomatics
   real<lower=0> sigma; //assume no age specific differences in transmission
@@ -226,9 +225,11 @@ parameters {
   real<lower=0,upper=1> det_rate[nAges]; //rate of detection across the population; should constrain such that this is less than 80%
   real<lower=0> delta; //rate of progression from hospitalisation to death
   real<lower=0> obs_noise; //observation noise
+  */
 }
 
 transformed parameters {
+  /*
   real theta[7+nAges];
   theta[1] = alpha;
   theta[2] = tau;
@@ -240,22 +241,17 @@ transformed parameters {
     theta[6+a] = det_rate[a];
   }
   theta[7+nAges] = delta;
+  */
 }
 model {
+}
+generated quantities {
   real z1[Tlockdown,nCompartments*nAges];
   real z2[T-Tlockdown,nCompartments*nAges];
   real z1_init[nCompartments*nAges];
   real z[T,nCompartments*nAges];
-  //priors
-  alpha ~ normal(1,1);
-  tau ~ normal(0,1);
-  sigma ~ normal(0,1);
-  gamma ~ normal(0.33,0.1);
-  H ~ beta(3,1); // beta expectation: a/a+b
-  phi ~ beta(2.5,1);
-  delta ~ normal(1,1);
-  obs_noise ~ normal(1,1);
-  to_vector(det_rate) ~ normal(0.2,0.2);
+  int hospitalised[T,nAges];
+  int deaths[T,nAges];
 
 /////////////////////////////
 //to incorporate lockdown and social distancing, split up the time series and integrate the ode in two portions
@@ -263,30 +259,13 @@ model {
   for (i in 1:nCompartments*nAges){
     z1_init[i] = z1[Tlockdown,i];
   }
-  z2 = integrate_ode_bdf(age_structured_seir_with_social_distancing, z1_init, 0, ts2, theta, x_r, x_i, 10^-3, 1, 10^2);
+  z2 = integrate_ode_bdf(age_structured_seir_with_social_distancing, z1_init, Tlockdown, ts2, theta, x_r, x_i, 10^-3, 1, 10^2);
   z = append_array(z1,z2);
 //observations only available for hospitalisations and deaths
   for (a in 1:nAges){
     for (t in 1:T){
-      hospitalised[t,a] ~ neg_binomial_2(z[t,13*nAges+a], obs_noise);
-      deaths[t,a] ~ neg_binomial_2(z[t,15*nAges+a], obs_noise);
+      hospitalised[t,a] = neg_binomial_2_rng(z[t,13*nAges+a], obs_noise);
+      deaths[t,a] = neg_binomial_2_rng(z[t,15*nAges+a], obs_noise);
     }
   }
-  //need to use lag tables for symptoms to hospital, and hospital to death to inform gamma and delta
-}
-generated quantities {
-  real z1sim[Tlockdown,nCompartments*nAges];
-  real z2sim[Tfinal-Tlockdown,nCompartments*nAges];
-  real z1_initsim[nCompartments*nAges];
-  real zsim[Tfinal,nCompartments*nAges];
-
-/////////////////////////////
-//to incorporate lockdown and social distancing, split up the time series and integrate the ode in two portions
-  z1sim = integrate_ode_bdf(age_structured_seir, y0, 0, ts1, theta, x_r, x_i, 10^-3, 1, 10^2);
-  for (i in 1:nCompartments*nAges){
-    z1_initsim[i] = z1sim[Tlockdown,i];
-  }
-  //integrate forward past current available data
-  z2sim = integrate_ode_bdf(age_structured_seir_with_social_distancing, z1_initsim, Tlockdown, ts3, theta, x_r, x_i, 10^-3, 1, 10^2);
-  zsim = append_array(z1sim,z2sim);
 }
